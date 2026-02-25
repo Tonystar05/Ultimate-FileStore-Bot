@@ -12,9 +12,8 @@ from helper.helper_func import is_bot_admin
 
 @Client.on_callback_query(filters.regex("^settings$"))
 async def settings(client, query):
-    if query.from_user.id not in client.admins:
-        await query.answer("Only Admins Can Access This", show_alert=True)
-        return
+    # (No admin check – everyone can view)
+    # ... rest of the code remains exactly the same
     msg = f"""<blockquote>**{sc(f'Settings of @{client.username}')}:**</blockquote>
 **{sc('Force Sub Channels')}:** `{len(client.fsub_dict)}`
 **{sc('Auto Delete Timer')}:** `{client.auto_del}`
