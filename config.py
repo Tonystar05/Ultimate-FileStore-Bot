@@ -63,7 +63,7 @@ DISABLE_BUTTON = False
 # 🎥 STREAMING ADDITION
 # ===========================
 STREAM_MODE = True                              # Enable/disable streaming for premium users
-STREAM_BASE_URL = "https://yourdomain.com"      # Public URL of your web server (same as deployed bot)
+STREAM_BASE_URL = "https://dominant-marla-yedhuku20005-e5fcc630.koyeb.app/"      # Public URL of your web server (same as deployed bot)
 
 # ===========================
 # URL SHORTENERS
