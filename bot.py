@@ -4,7 +4,7 @@
 from aiohttp import web
 import asyncio
 import time
-from plugins import web_server
+from plugins.stream_server import setup as stream_server_setup, stream_server as stream_server_app  # <-- CHANGED
 
 from pyrogram import Client
 from pyrogram.enums import ParseMode
@@ -175,7 +175,8 @@ class Bot(Client):
         except Exception as e:
              self.LOGGER(__name__, self.name).warning(f"Failed to load dynamic config: {e}")
         
-        web_server.setup(self)
+        # CHANGED: Use stream_server_setup instead of web_server_setup
+        stream_server_setup(self)
 
         try:
             asyncio.create_task(self._broadcast_ttl_worker())
@@ -251,7 +252,8 @@ class Bot(Client):
 
 async def web_app():
     from config import BIND_ADDRESS, PORT
-    app = web.AppRunner(await web_server())
+    # CHANGED: Use stream_server_app instead of web_server_app
+    app = web.AppRunner(await stream_server_app())
     await app.setup()
     bind_address = BIND_ADDRESS
     await web.TCPSite(app, bind_address, PORT).start()
