@@ -11,9 +11,13 @@ import humanize
 import secrets
 import json
 import asyncio
+import os  # 🎥 STREAMING ADDITION
 
 # Import the new button functions from others.py
 from plugins.others import home_buttons, home_buttons_admin
+
+# 🎥 STREAMING ADDITION: import config settings
+from config import STREAM_MODE, STREAM_BASE_URL
 
 # Load credit configuration
 try:
@@ -391,6 +395,37 @@ async def start_command(client: Client, message: Message):
                 yugen_msgs.append(copied_msg)
             except Exception as e:
                 client.LOGGER(__name__, client.name).warning(f"Failed to copy message {msg.id}: {e}")
+
+        # 🎥 STREAMING ADDITION: generate and send streaming links for premium users
+        if STREAM_MODE and is_premium_user:
+            stream_links = []
+            for msg in valid_messages:
+                # Check if it's a video file
+                is_video = False
+                file_ext = ""
+                if msg.video:
+                    is_video = True
+                    file_ext = ".mp4"
+                elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith('video/'):
+                    fname = msg.document.file_name or ""
+                    if fname.lower().endswith(('.mkv', '.mp4')):
+                        is_video = True
+                        file_ext = os.path.splitext(fname)[1]
+                
+                if is_video:
+                    # Create streaming token (24 hours expiry)
+                    token = await client.mongodb.create_streaming_token(
+                        user_id=user_id,
+                        channel_id=msg.chat.id,
+                        msg_id=msg.id,
+                        expiry_hours=24
+                    )
+                    stream_url = f"{STREAM_BASE_URL}/stream?token={token}"
+                    stream_links.append(f"• <a href='{stream_url}'>🎬 {file_ext.upper()} Stream</a>")
+            
+            if stream_links:
+                stream_msg = "<b>🎥 Streaming links (valid 24h):</b>\n" + "\n".join(stream_links)
+                await client.send_message(user_id, stream_msg, disable_web_page_preview=True)
 
         if yugen_msgs and client.auto_del > 0:
             warning = await client.send_message(
