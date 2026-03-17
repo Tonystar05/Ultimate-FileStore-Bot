@@ -1,10 +1,10 @@
-
 import asyncio
 import json
 from bot import Bot, web_app
 from pyrogram import compose
+from config import STREAM_MODE, PREMIUM_STREAM_MODE, FQDN
 
-# Static default fallback message templates (can be overridden per setup entry if needed)
+# Static default fallback message templates
 default_messages = {
     'START': '<blockquote expandable>__Lorem ipsum dolor sit amet,\nconsectetur adipiscing elit sed.\nVivamus luctus urna sed urna.\nCurabitur blandit tempus porttitor.\nNullam quis risus eget urna.__</blockquote>',
     'FSUB': '',
@@ -53,7 +53,10 @@ async def main():
                 api_id,
                 api_hash,
                 protect,
-                disable_btn
+                disable_btn,
+                STREAM_MODE,
+                PREMIUM_STREAM_MODE,
+                FQDN
             )
         )
 
