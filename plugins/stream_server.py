@@ -128,7 +128,8 @@ async def stream_file(request):
     except Exception as e:
         return web.Response(text=f"Error: {e}", status=500)
 
-async def web_server():
+# Renamed from web_server to stream_server to avoid conflict
+async def stream_server():
     app = web.Application()
     app.add_routes(routes)
     return app
