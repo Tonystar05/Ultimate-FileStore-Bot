@@ -1,6 +1,7 @@
-#credit dena toh de ni dena toh mat de laadle ~ GPG
+# credit dena toh de ni dena toh mat de laadle ~ GPG
 import logging
 from logging.handlers import RotatingFileHandler
+import os
 
 LOG_FILE_NAME = "bot.log"
 PORT = '8000'
@@ -74,6 +75,15 @@ URL_SHORTENERS = {
         'active': True
     }
 }
+
+# ===========================
+# STREAMING CONFIGURATION (NEW)
+# ===========================
+STREAM_MODE = bool(os.environ.get('STREAM_MODE', True))               # Enable/disable streaming globally
+PREMIUM_STREAM_MODE = bool(os.environ.get('PREMIUM_STREAM_MODE', True)) # Restrict streaming to premium users only
+BIND_ADDRESS = os.environ.get('BIND_ADDRESS', '0.0.0.0')               # Web server bind address
+FQDN = os.environ.get('FQDN', '') # Your full domain (e.g., https://files.example.com)
+# ===========================
 
 def LOGGER(name: str, client_name: str) -> logging.Logger:
     logger = logging.getLogger(name)
