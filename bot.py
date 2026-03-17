@@ -11,7 +11,7 @@ from pyrogram.enums import ParseMode
 from pyrogram.errors import PeerIdInvalid, ChannelInvalid, RPCError
 import sys
 from datetime import datetime
-from config import LOGGER, PORT, OWNER_ID
+from config import LOGGER, PORT, OWNER_ID, BIND_ADDRESS, FQDN
 from helper import MongoDB
 from helper.enhanced_credit_db import EnhancedCreditDB
 
@@ -19,7 +19,7 @@ version = "v1.0.0"
 
 
 class Bot(Client):
-    def __init__(self, session, workers, db, fsub, token, admins, messages, auto_del, db_uri, db_name, api_id, api_hash, protect, disable_btn):
+    def __init__(self, session, workers, db, fsub, token, admins, messages, auto_del, db_uri, db_name, api_id, api_hash, protect, disable_btn, stream_mode, premium_stream_mode, fqdn):
         super().__init__(
             name=session,
             api_hash=api_hash,
@@ -44,10 +44,13 @@ class Bot(Client):
         self.disable_btn = disable_btn
         self.reply_text = messages.get('REPLY', 'Do not send any useless message in the bot.')
         self.mongodb = MongoDB(db_uri, db_name)
-        self.db_uri = db_uri  # Store for EnhancedCreditDB
-        self.db_name = db_name  # Store for EnhancedCreditDB
+        self.db_uri = db_uri
+        self.db_name = db_name
         self.req_channels = []
-    
+        self.stream_mode = stream_mode
+        self.premium_stream_mode = premium_stream_mode
+        self.fqdn = fqdn
+
     async def start(self):
         await super().start()
         usr_bot_me = await self.get_me()
@@ -82,7 +85,6 @@ class Bot(Client):
         # -----------------------
         try:
             db_channel = None
-            # Try to fetch chat with a few retries to avoid PEER_ID_INVALID cache issues
             for attempt in range(3):
                 try:
                     db_channel = await self.get_chat(self.db)
@@ -91,7 +93,6 @@ class Bot(Client):
                     self.LOGGER(__name__, self.name).warning(
                         f"Attempt {attempt+1}/3 to load DB channel ({self.db}) failed: {e}"
                     )
-                    # short delay to allow Telegram caches to update or propagation after adding bot
                     await asyncio.sleep(1)
                 except RPCError as rpc_e:
                     self.LOGGER(__name__, self.name).warning(
@@ -99,23 +100,20 @@ class Bot(Client):
                     )
                     await asyncio.sleep(1)
             if not db_channel:
-                # final failure: give clear guidance and stop this bot instance gracefully
                 self.LOGGER(__name__, self.name).warning(
-                    f"Unable to load DB channel after retries. Check that the bot is added to the channel and the ID is correct. Current value: {self.db}"
+                    f"Unable to load DB channel after retries. Current value: {self.db}"
                 )
-                self.LOGGER(__name__, self.name).info("\nBot Stopped. Join https://t.me/Mortal_realm for support")
+                self.LOGGER(__name__, self.name).info("\nBot Stopped.")
                 await self.stop()
                 return
 
             self.db_channel = db_channel
-            self.db_channel_id = db_channel.id  # Store for auto-batch
+            self.db_channel_id = db_channel.id
 
-            # Try sending test message with a couple retries (transient network/API issues can cause failures)
             test = None
             for attempt in range(3):
                 try:
-                    test = await self.send_message(chat_id=db_channel.id, text="Testing Message by @GPGMS0")
-                    # if succeeded, break out
+                    test = await self.send_message(chat_id=db_channel.id, text="Testing Message")
                     break
                 except (PeerIdInvalid, ChannelInvalid) as e:
                     self.LOGGER(__name__, self.name).warning(
@@ -137,27 +135,21 @@ class Bot(Client):
                 self.LOGGER(__name__, self.name).warning(
                     f"Failed to send test message to DB channel ({self.db}) after retries."
                 )
-                self.LOGGER(__name__, self.name).warning(
-                    f"Make sure the bot is actually a member/admin of the channel and has permission to send messages. Current value: {self.db}"
-                )
-                self.LOGGER(__name__, self.name).info("\nBot Stopped. Join https://t.me/Mortal_realm for support")
+                self.LOGGER(__name__, self.name).info("\nBot Stopped.")
                 await self.stop()
                 return
 
-            # cleanup test message
             try:
                 await test.delete()
             except Exception:
-                # ignore deletion errors (permissions may differ), but continue
                 pass
 
         except Exception as e:
-            # fallback catch-all: log and stop gracefully
             self.LOGGER(__name__, self.name).warning(e)
             self.LOGGER(__name__, self.name).warning(
-                f"Make Sure bot is Admin in DB Channel, and Double check the database channel Value, Current Value {self.db}"
+                f"Make Sure bot is Admin in DB Channel, Current Value {self.db}"
             )
-            self.LOGGER(__name__, self.name).info("\nBot Stopped. Join https://t.me/Mortal_realm for support")
+            self.LOGGER(__name__, self.name).info("\nBot Stopped.")
             await self.stop()
             return
 
@@ -169,14 +161,12 @@ class Bot(Client):
         
         self.username = usr_bot_me.username
         
-        # 🔐 Ensure MongoDB indexes for hybrid token system
         try:
             await self.mongodb.ensure_token_indexes()
             self.LOGGER(__name__, self.name).info("Token indexes ensured.")
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Failed to create token indexes: {e}")
             
-        # 🔄 Load Dynamic Configs (Auto-Del)
         try:
             stored_auto_del = await self.mongodb.get_bot_config('auto_del')
             if stored_auto_del is not None:
@@ -185,19 +175,19 @@ class Bot(Client):
         except Exception as e:
              self.LOGGER(__name__, self.name).warning(f"Failed to load dynamic config: {e}")
         
+        web_server.setup(self)
+
         try:
             asyncio.create_task(self._broadcast_ttl_worker())
             asyncio.create_task(self._credit_expiry_worker())
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Failed to start background workers: {e}")
 
-
     async def stop(self, *args):
         await super().stop()
         self.LOGGER(__name__, self.name).info("Bot stopped.")
 
     async def _broadcast_ttl_worker(self):
-        """Periodically checks MongoDB for due broadcast TTL jobs and deletes messages."""
         while True:
             try:
                 now_ts = int(time.time())
@@ -224,18 +214,15 @@ class Bot(Client):
                 await asyncio.sleep(5)
     
     async def _credit_expiry_worker(self):
-        """Periodically checks and removes expired credits"""
         while True:
             try:
                 from helper.enhanced_credit_db import EnhancedCreditDB
                 enhanced_db = EnhancedCreditDB(self.db_uri, self.db_name)
                 
-                # Cleanup expired credits every hour
                 count = await enhanced_db.cleanup_all_expired()
                 if count > 0:
                     self.LOGGER(__name__, self.name).info(f"Credit expiry cleanup: removed {count} expired accounts")
                 
-                # Check for credits expiring in 24 hours and warn users
                 expiring_soon = await enhanced_db.get_expiring_soon(hours=24)
                 for user_data in expiring_soon:
                     user_id = user_data["_id"]
@@ -255,16 +242,16 @@ class Bot(Client):
                         except:
                             pass
                 
-                # Sleep for 1 hour
                 await asyncio.sleep(3600)
                 
             except Exception as loop_err:
                 self.LOGGER(__name__, self.name).warning(f"Credit expiry worker error: {loop_err}")
-                await asyncio.sleep(300)  # 5 minutes on error
+                await asyncio.sleep(300)
 
 
 async def web_app():
+    from config import BIND_ADDRESS, PORT
     app = web.AppRunner(await web_server())
     await app.setup()
-    bind_address = "0.0.0.0"
+    bind_address = BIND_ADDRESS
     await web.TCPSite(app, bind_address, PORT).start()
