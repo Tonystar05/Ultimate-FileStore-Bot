@@ -191,6 +191,8 @@ class Bot(Client):
         except Exception as e:
             self.LOGGER(__name__, self.name).warning(f"Failed to start background workers: {e}")
 
+        # 🎥 STREAMING ADDITION: make this bot instance available to web server
+        web_server.current_bot = self
 
     async def stop(self, *args):
         await super().stop()
