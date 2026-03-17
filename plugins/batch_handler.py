@@ -3,9 +3,12 @@
 
 # Batch Link Handler
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from helper.font_converter import to_small_caps as sc
 from helper.quality_detector import get_quality_priority
+# 🎥 STREAMING ADDITION
+from config import STREAM_MODE, STREAM_BASE_URL
+import os
 
 # Use group=1 to give this handler lower priority than /start (which is in group=0 by default)
 @Client.on_message(filters.private & filters.text, group=1)
@@ -111,7 +114,37 @@ async def batch_link_handler(client: Client, message: Message):
                 sent_msgs.append(copied)
             except Exception as e:
                 pass
+        
+        # 🎥 STREAMING ADDITION: generate streaming links for all video files in the season batch
+        if STREAM_MODE and is_premium:
+            stream_links = []
+            for msg in messages:
+                # Check if it's a video file
+                is_video = False
+                file_ext = ""
+                if msg.video:
+                    is_video = True
+                    file_ext = ".mp4"
+                elif msg.document and msg.document.mime_type and msg.document.mime_type.startswith('video/'):
+                    fname = msg.document.file_name or ""
+                    if fname.lower().endswith(('.mkv', '.mp4')):
+                        is_video = True
+                        file_ext = os.path.splitext(fname)[1]
                 
+                if is_video:
+                    token = await client.mongodb.create_streaming_token(
+                        user_id=user_id,
+                        channel_id=msg.chat.id,
+                        msg_id=msg.id,
+                        expiry_hours=24
+                    )
+                    stream_url = f"{STREAM_BASE_URL}/stream?token={token}"
+                    stream_links.append(f"• <a href='{stream_url}'>🎬 {file_ext.upper()} Stream</a>")
+            
+            if stream_links:
+                stream_msg = "<b>🎥 Streaming links (valid 24h):</b>\n" + "\n".join(stream_links)
+                await client.send_message(user_id, stream_msg, disable_web_page_preview=True)
+        
         # Auto-Delete Logic
         if sent_msgs and client.auto_del > 0:
             warning = await message.reply(
@@ -168,7 +201,7 @@ async def batch_link_handler(client: Client, message: Message):
     await message.reply(msg, reply_markup=keyboard)
 
 @Client.on_callback_query(filters.regex(r"^batchfile_"))
-async def batch_file_callback(client: Client, query):
+async def batch_file_callback(client: Client, query: CallbackQuery):
     """Handle batch file selection"""
     
     data = query.data.split("_")
@@ -227,8 +260,8 @@ async def batch_file_callback(client: Client, query):
         # Old Format: integer (huge)
         # New Format: "CH_ID-MSG_ID" (string)
         
-        channel_id = str(channel_id).replace("-100", "") # Remove prefix for shorter link
-        token_string = f"get-{channel_id}-{msg_id}" 
+        channel_id_str = str(channel_id).replace("-100", "") # Remove prefix for shorter link
+        token_string = f"get-{channel_id_str}-{msg_id}" 
         encoded_token = await encode(token_string)
         
         file_link = f"https://t.me/{client.username}?start={encoded_token}"
@@ -241,12 +274,39 @@ async def batch_file_callback(client: Client, query):
     if client.auto_del > 0:
         timer_text = f"\n\n⏳ **{sc('warning')}:** {sc('file auto-deletes in')} {humanize.naturaldelta(client.auto_del)} {sc('after opening')}"
     
+    # 🎥 STREAMING ADDITION: check premium and generate streaming token if applicable
+    is_premium = await client.mongodb.is_premium(user_id)
+    buttons = []
+    
+    # File download button (always present)
+    buttons.append([InlineKeyboardButton(f"📥 {sc('get file')}", url=file_link)])
+    
+    # Streaming button for premium users if it's a video file
+    if STREAM_MODE and is_premium:
+        # We need to know if the file is a video. We can try to determine from filename.
+        filename = file_data.get('filename', '')
+        if filename.lower().endswith(('.mkv', '.mp4')):
+            # Create streaming token
+            try:
+                channel_id = file_data.get('channel_id', client.db)
+                msg_id = int(file_id)
+                token = await client.mongodb.create_streaming_token(
+                    user_id=user_id,
+                    channel_id=channel_id,
+                    msg_id=msg_id,
+                    expiry_hours=24
+                )
+                stream_url = f"{STREAM_BASE_URL}/stream?token={token}"
+                buttons.append([InlineKeyboardButton(f"🎬 {sc('stream')}", url=stream_url)])
+            except Exception as e:
+                client.LOGGER(__name__, client.name).warning(f"Stream token creation failed: {e}")
+    
+    reply_markup = InlineKeyboardMarkup(buttons)
+    
     await query.message.reply(
         f"**📥 {file_data['quality']}**\n"
         f"📄 {file_data['filename']}"
         f"{timer_text}\n\n"
         f"{sc('click below to access')}:",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton(f"📥 {sc('get file')}", url=file_link)]
-        ])
+        reply_markup=reply_markup
     )
