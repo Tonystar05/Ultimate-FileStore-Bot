@@ -13,7 +13,6 @@ async def batch(client: Client, message: Message):
         
     cancel_btn = InlineKeyboardMarkup([[InlineKeyboardButton(f"❌ {sc('cancel')}", callback_data="cancel_batch_process")]])
     
-    # Step 1: First Message
     while True:
         try:
             ask_msg = await message.reply(f"{sc('forward the')} **{sc('first message')}** {sc('from db channel (with quotes)')}..\n\n{sc('or send the db channel post link')}", reply_markup=cancel_btn)
@@ -28,11 +27,9 @@ async def batch(client: Client, message: Message):
                 await message.reply(f"❌ **{sc('batch process cancelled.')}**")
                 return
             else:
-                # Ignore other callbacks or handle them?
                 await first_response.answer(sc("wrong button"), show_alert=True)
                 continue
             
-        # UPDATED: Unpack tuple (msg_id, channel_id)
         f_msg_id, f_channel_id = await get_message_id(client, first_response)
         if f_msg_id:
             await ask_msg.delete() 
@@ -41,7 +38,6 @@ async def batch(client: Client, message: Message):
             await first_response.reply(f"❌ {sc('error')}\n\n{sc('this forwarded post is not from my db channel or this link is taken from db channel')}", quote = True)
             continue
 
-    # Step 2: Last Message
     while True:
         try:
             ask_msg = await message.reply(f"{sc('forward the')} **{sc('last message')}** {sc('from db channel (with quotes)')}..\n{sc('or send the db channel post link')}", reply_markup=cancel_btn)
@@ -59,7 +55,6 @@ async def batch(client: Client, message: Message):
                 await second_response.answer(sc("wrong button"), show_alert=True)
                 continue
 
-        # UPDATED: Unpack tuple (msg_id, channel_id)
         s_msg_id, s_channel_id = await get_message_id(client, second_response)
         if s_msg_id:
             await ask_msg.delete()
@@ -68,14 +63,7 @@ async def batch(client: Client, message: Message):
             await second_response.reply(f"❌ {sc('error')}\n\n{sc('this forwarded post is not from my db channel or this link is taken from db channel')}", quote = True)
             continue
 
-
-    # Calculate IDs
-    # batch command generates a RANGE. Hybrid token system is for SINGLE files.
-    # We stick to base64 for ranges for now, but we add INFO to the message.
-    
-    # Fetch first message to get a name
     try:
-        # Use f_channel_id to fetch message from the correct channel
         first_msg = await client.get_messages(f_channel_id, f_msg_id)
         batch_name = ""
         if first_msg:
@@ -92,19 +80,22 @@ async def batch(client: Client, message: Message):
     except:
         info_text = ""
 
-    # Hybrid Token for Batch Range
-    # UPDATED: Use f_channel_id instead of client.db_channel.id
     try:
         token = await client.mongodb.create_file_token(f_channel_id, f_msg_id, end_msg_id=s_msg_id)
         link = f"https://t.me/{client.username}?start={token}"
     except Exception as e:
         print(f"Token creation failed for batch: {e}")
-        # UPDATED: Use f_channel_id for the math
         string = f"get-{f_msg_id * abs(f_channel_id)}-{s_msg_id * abs(f_channel_id)}"
         base64_string = await encode(string)
         link = f"https://t.me/{client.username}?start={base64_string}"
-        
-    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
+        token = None
+
+    buttons = [[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]]
+    if client.stream_mode and token:
+        stream_link = f"{client.fqdn}/stream/{token}"
+        buttons.append([InlineKeyboardButton(f"🌐 {sc('stream online')}", url=stream_link)])
+    reply_markup = InlineKeyboardMarkup(buttons)
+
     await second_response.reply_text(f"{info_text}<b>{sc('here is your link')}</b>\n\n<code>{link}</code>", quote=True, reply_markup=reply_markup)
 
 
@@ -132,7 +123,6 @@ async def link_generator(client: Client, message: Message):
                 await channel_message.answer(sc("wrong button"), show_alert=True)
                 continue
             
-        # UPDATED: Unpack tuple (msg_id, channel_id)
         msg_id, channel_id = await get_message_id(client, channel_message)
         if msg_id:
             await ask_msg.delete() 
@@ -141,9 +131,6 @@ async def link_generator(client: Client, message: Message):
             await channel_message.reply(f"❌ {sc('error')}\n\n{sc('this forwarded post is not from my db channel or this link is not taken from db channel')}", quote = True)
             continue
 
-    # UPDATED: We now have the correct channel_id from the message, no need to fallback to main db
-    
-    # NEW: Fetch content name
     file_name = ""
     try:
         f_msg = await client.get_messages(channel_id, msg_id)
@@ -155,15 +142,19 @@ async def link_generator(client: Client, message: Message):
     except:
         pass
         
-    # Hybrid Token
     try:
         token = await client.mongodb.create_file_token(channel_id, msg_id)
         link = f"https://t.me/{client.username}?start={token}"
     except:
         base64_string = await encode(f"get-{msg_id * abs(channel_id)}")
         link = f"https://t.me/{client.username}?start={base64_string}"
+        token = None
         
-    reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
+    buttons = [[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]]
+    if client.stream_mode and token:
+        stream_link = f"{client.fqdn}/stream/{token}"
+        buttons.append([InlineKeyboardButton(f"🌐 {sc('stream online')}", url=stream_link)])
+    reply_markup = InlineKeyboardMarkup(buttons)
     
     text = ""
     if file_name:
@@ -177,7 +168,6 @@ async def single_file_gen_handler(client: Client, message: Message):
     if message.from_user.id not in client.admins:
         return
 
-    # Skip if message is a command (handled by other handlers)
     if message.text and message.text.startswith("/"):
         return
 
@@ -186,25 +176,18 @@ async def single_file_gen_handler(client: Client, message: Message):
         
         main_channel = getattr(client, 'db_channel_id', client.db)
         
-        # If message is forwarded from DB Channel, use existing ID
         channel_id = main_channel
         msg_id = None
         
-        # Check Pyrogram v2 forward_origin first
         if hasattr(message, 'forward_origin') and message.forward_origin and message.forward_origin.type == "channel":
             forwarded_channel_id = message.forward_origin.chat.id
-            # Check if it's from any of our DB channels
             extra_channels = await client.mongodb.get_db_channels()
             all_db_channels = [main_channel] + extra_channels
             
             if forwarded_channel_id in all_db_channels:
                 msg_id = message.forward_origin.message_id
                 channel_id = forwarded_channel_id
-            else:
-                 # Copy
-                 pass
-        
-        # Fallback for Pyrogram v1 or other cases if needed, but forward_origin covers v2
+
         elif message.forward_from_chat:
              forwarded_channel_id = message.forward_from_chat.id
              extra_channels = await client.mongodb.get_db_channels()
@@ -214,27 +197,28 @@ async def single_file_gen_handler(client: Client, message: Message):
                  channel_id = forwarded_channel_id
         
         if not msg_id:
-             # Not from our DB or clean upload, copy to selected channel
              channel_id = await client.mongodb.get_next_db_channel(main_channel)
              post = await message.copy(chat_id=channel_id, caption=message.caption)
              msg_id = post.id
              
-        # Extract filename for display
         file_name = message.document.file_name if message.document else ""
         if not file_name and message.caption:
              file_name = message.caption.split("\n")[0][:50]
             
-        # 🔐 Generate hybrid token (stored in MongoDB)
         try:
             token = await client.mongodb.create_file_token(channel_id, msg_id)
             link = f"https://t.me/{client.username}?start={token}"
         except Exception as e:
             print(f"Token creation failed: {e}")
-            # Fallback to Base64
             base64_string = await encode(f"get-{msg_id * abs(channel_id)}")
             link = f"https://t.me/{client.username}?start={base64_string}"
+            token = None
         
-        reply_markup = InlineKeyboardMarkup([[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]])
+        buttons = [[InlineKeyboardButton(f"🔁 {sc('share url')}", url=f'https://telegram.me/share/url?url={link}')]]
+        if client.stream_mode and token:
+            stream_link = f"{client.fqdn}/stream/{token}"
+            buttons.append([InlineKeyboardButton(f"🌐 {sc('stream online')}", url=stream_link)])
+        reply_markup = InlineKeyboardMarkup(buttons)
         
         text = ""
         if file_name:
