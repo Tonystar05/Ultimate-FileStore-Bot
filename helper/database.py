@@ -25,9 +25,7 @@ class MongoDB:
             instance.pending_files = instance.db["pending_files"]  # Files pending grouping
             instance.file_tokens = instance.db["file_tokens"]  # Hybrid token system
             instance.rate_limits = instance.db["rate_limits"]  # Rate limiting
-            instance.channel_members = instance.db["channel_members"]  # store approved members for request channels
-            # 🎥 STREAMING ADDITION
-            instance.streaming_tokens = instance.db["streaming_tokens"]  # Streaming access tokens
+            instance.channel_members = instance.db["channel_members"]  # <-- ADDED: store approved members for request channels
             cls._instances[(uri, db_name)] = instance
         return cls._instances[(uri, db_name)]
 
@@ -565,34 +563,3 @@ class MongoDB:
             {"channel_id": channel_id, "user_id": user_id}
         )
         return result is not None
-
-    # =====================================================
-    # 🎥 STREAMING ADDITION
-    # =====================================================
-
-    async def create_streaming_token(self, user_id: int, channel_id: int, msg_id: int, expiry_hours: int = 24) -> str:
-        """Generate a unique streaming token tied to a user and a file."""
-        import secrets, string
-        token = ''.join(secrets.choice(string.ascii_letters + string.digits) for _ in range(20))
-        expire_at = datetime.now() + timedelta(hours=expiry_hours)
-        await self.streaming_tokens.insert_one({
-            "_id": token,
-            "user_id": user_id,
-            "channel_id": channel_id,
-            "msg_id": msg_id,
-            "created_at": datetime.now(),
-            "expire_at": expire_at,
-            "used": False
-        })
-        return token
-
-    async def get_streaming_token(self, token: str):
-        """Retrieve token data and check expiry."""
-        doc = await self.streaming_tokens.find_one({"_id": token})
-        if doc and doc.get("expire_at") and datetime.now() > doc["expire_at"]:
-            await self.streaming_tokens.delete_one({"_id": token})
-            return None
-        return doc
-
-    async def delete_streaming_token(self, token: str):
-        await self.streaming_tokens.delete_one({"_id": token})
