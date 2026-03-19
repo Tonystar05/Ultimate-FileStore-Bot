@@ -249,7 +249,6 @@ async def start_command(client: Client, message: Message):
                 return
 
         # ==================== NEW: PREMIUM STREAMING MENU ====================
-        # This section handles premium users and shows the streaming menu
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
         token_verification_enabled = await client.mongodb.get_bot_config('token_verification_enabled', True)
         
@@ -343,7 +342,7 @@ async def start_command(client: Client, message: Message):
             return
         # ==================== END PREMIUM STREAMING MENU ====================
 
-        # If not premium and token verification enabled, show shortener
+        # ==================== FIXED NON-PREMIUM SHORTENER SECTION ====================
         if not is_premium_user and token_verification_enabled:
             temp_msg = await message.reply(f"🔄 **{sc('generating your link')}...**")
             
@@ -357,7 +356,6 @@ async def start_command(client: Client, message: Message):
                 elif ids:
                     try:
                         t_msg_id = ids[0]
-                        # Correct channel selection for caption fetching
                         main_db = getattr(client, 'db_channel_id', client.db)
                         extra_dbs = await client.mongodb.get_db_channels()
                         caption_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
@@ -370,8 +368,10 @@ async def start_command(client: Client, message: Message):
                                     if f_msg.document:
                                         content_name = f"🎬 <b>{f_msg.document.file_name}</b>\n\n"
                                     break
-                            except: continue
-                    except: pass
+                            except: 
+                                continue
+                    except: 
+                        pass
             except Exception as e:
                 client.LOGGER(__name__, client.name).warning(f"Error fetching content name: {e}")
             
@@ -390,19 +390,28 @@ async def start_command(client: Client, message: Message):
                 f"<b>💎 {sc('want direct access')}?</b> {sc('buy premium')}!"
             )
             
-            # ========== FIXED: Safe button sending with fallback ==========
+            # Safe button sending with multiple fallbacks
             try:
-                # Validate shortened_url
-                if not shortened_url or not shortened_url.startswith(('http://', 'https://')):
-                    shortened_url = file_link  # fallback to original
-
-                buttons = InlineKeyboardMarkup([
-                    [InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=shortened_url)],
-                    [
-                        InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url="https://t.me/ProCineflix/45"),
-                        InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url="https://t.me/ProCineflix/43")
-                    ]
-                ])
+                # Create main button with validated URL
+                main_url = shortened_url if shortened_url and shortened_url.startswith(('http://', 'https://')) else file_link
+                
+                # Start with just the main button
+                keyboard = [[InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=main_url)]]
+                
+                # Try to add second row if URLs are valid
+                second_row = []
+                tutorial_url = "https://t.me/ProCineflix/45"
+                premium_url = "https://t.me/ProCineflix/43"
+                
+                if tutorial_url.startswith(('http://', 'https://')):
+                    second_row.append(InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url=tutorial_url))
+                if premium_url.startswith(('http://', 'https://')):
+                    second_row.append(InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url=premium_url))
+                
+                if second_row:
+                    keyboard.append(second_row)
+                
+                buttons = InlineKeyboardMarkup(keyboard)
 
                 await client.send_photo(
                     chat_id=message.chat.id,
@@ -412,18 +421,24 @@ async def start_command(client: Client, message: Message):
                     protect_content=True
                 )
             except Exception as e:
-                client.LOGGER(__name__, client.name).error(f"Send photo error: {e}")
-                # Fallback: send simple text without buttons
-                await message.reply(
-                    f"{content_name}"
-                    f"🔗 **Your link:**\n{file_link}\n\n"
-                    f"Solve the shortener to get your file."
-                )
-            # ===============================================================
+                client.LOGGER(__name__, client.name).error(f"Button error: {e}")
+                # Final fallback - send without any buttons
+                try:
+                    await client.send_photo(
+                        chat_id=message.chat.id,
+                        photo="https://files.catbox.moe/bktufd.jpg",
+                        caption=premium_text,
+                        protect_content=True
+                    )
+                except Exception as e2:
+                    client.LOGGER(__name__, client.name).error(f"Final fallback error: {e2}")
+                    # Ultimate fallback - just send text
+                    await message.reply(premium_text)
 
             if original_base64.startswith("batch_"):
                 message.stop_propagation()
             return
+        # ==================== END FIXED NON-PREMIUM SECTION ====================
         
         # Handle batch links after verification
         if original_base64.startswith("batch_"):
