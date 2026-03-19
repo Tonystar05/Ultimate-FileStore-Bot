@@ -25,10 +25,7 @@ class MongoDB:
             instance.pending_files = instance.db["pending_files"]  # Files pending grouping
             instance.file_tokens = instance.db["file_tokens"]  # Hybrid token system
             instance.rate_limits = instance.db["rate_limits"]  # Rate limiting
-            instance.channel_members = instance.db["channel_members"]  # store approved members for request channels
-            # ========== NEW: Streaming tokens collection ==========
-            instance.stream_tokens = instance.db["stream_tokens"]  # Streaming tokens for premium users
-            # ======================================================
+            instance.channel_members = instance.db["channel_members"]  # <-- ADDED: store approved members for request channels
             cls._instances[(uri, db_name)] = instance
         return cls._instances[(uri, db_name)]
 
@@ -566,58 +563,3 @@ class MongoDB:
             {"channel_id": channel_id, "user_id": user_id}
         )
         return result is not None
-
-    # =====================================================
-    # STREAMING TOKEN METHODS (NEW - ADD THESE AT THE END)
-    # =====================================================
-    
-    async def create_stream_token(self, user_id: int, channel_id: int, msg_id: int, filename: str = "", expiry_hours: int = 24) -> str:
-        """
-        Create a streaming token for premium users
-        Returns a unique token string
-        """
-        import secrets
-        import string
-        alphabet = string.ascii_letters + string.digits
-        token = ''.join(secrets.choice(alphabet) for _ in range(32))
-        expires = datetime.now() + timedelta(hours=expiry_hours)
-        
-        await self.stream_tokens.insert_one({
-            "_id": token,
-            "user_id": user_id,
-            "channel_id": channel_id,
-            "msg_id": msg_id,
-            "filename": filename,
-            "created_at": datetime.now(),
-            "expires_at": expires,
-            "used_count": 0
-        })
-        return token
-
-    async def validate_stream_token(self, token: str) -> dict | None:
-        """
-        Validate a streaming token
-        Returns token document if valid and not expired, else None
-        """
-        doc = await self.stream_tokens.find_one({"_id": token})
-        if not doc:
-            return None
-        if doc["expires_at"] < datetime.now():
-            # Token expired - delete it
-            await self.stream_tokens.delete_one({"_id": token})
-            return None
-        return doc
-
-    async def increment_stream_token_usage(self, token: str):
-        """Increment the usage count of a streaming token"""
-        await self.stream_tokens.update_one(
-            {"_id": token}, 
-            {"$inc": {"used_count": 1}}
-        )
-
-    async def cleanup_expired_stream_tokens(self):
-        """Remove all expired streaming tokens (can be called periodically)"""
-        result = await self.stream_tokens.delete_many({
-            "expires_at": {"$lt": datetime.now()}
-        })
-        return result.deleted_count
