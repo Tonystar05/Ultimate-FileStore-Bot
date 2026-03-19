@@ -11,10 +11,10 @@
         "db": -1003536384063,
         "auto_del": 300,
         "messages": {
-            "START": "<b>ʜᴇʟʟᴏ {first}\n\nɪ ᴀᴍ ғɪʟᴇ sᴛᴏʀᴇ ʙᴏᴛ, ɪ ᴄᴀɴ sᴛᴏʀᴇ ᴘʀɪᴠᴀᴛᴇ ғɪʟᴇs ɪɴ sᴘᴇᴄɪғɪᴇᴅ ᴄʜᴀɴɴᴇʟ ᴀɴᴅ ᴏᴛʜᴇʀ ᴜsᴇʀs ᴄᴀɴ ᴀᴄᴄᴇss ɪᴛ ғʀᴏᴍ sᴘᴇᴄɪᴀʟ ʟɪɴᴋ.</b>",
-            "FSUB": "Hᴇʟʟᴏ Sᴇɴᴘᴀɪ {mention}\n\n<b>Yᴏᴜ Nᴇᴇᴅ Tᴏ Jᴏɪɴ Iɴ Mʏ Cʜᴀɴɴᴇʟs Tᴏ Gᴇᴛ Fɪʟᴇs</b>",
-            "ABOUT": "<b>❏ ᴍʏ ɴᴀᴍᴇ: <a href='https://t.me/XeonFileBot'>𝐒ᴏᴘʜɪᴇ</a>\n<blockquote expandable>❏ Dᴇᴠᴇʟᴏᴘᴇʀ: <a href='https://t.me/MrXeonTg'>ᴍʀ xᴇᴏɴ</a>\n❏ ᴍʏ ʙᴇsᴛ ғʀɪᴇɴᴅ: <a href='tg://settings'>ᴛʜɪs ᴘᴇʀsᴏɴ</a>\n❏ ʟɪʙʀᴀʀʏ: <a href='https://docs.pyrogram.org'>Pʏʀᴏɢʀᴀᴍ ᴠ2</a>\n❏ ʟᴀɴɢᴜᴀɢᴇ: <a href='https://docs.python.org/3'>Pʏᴛʜᴏɴ 3</a>\n❏ ᴅᴀᴛᴀʙᴀsᴇ: <a href='https://www.mongodb.com/docs'>Mᴏɴɢᴏ ᴅʙ</a>\n❏ ʙᴏᴛ sᴇʀᴠᴇʀ: <a href='https://heroku.com'>ʜᴇʀᴏᴋᴜ</a>\n❏ ʙᴜɪʟᴅ ꜱᴛᴀᴛᴜꜱ: ᴠ5.4.1 [ᴀᴅᴠᴀɴᴄᴇ ғᴇᴀᴛᴜʀᴇs]</b></blockquote>",
-            "REPLY": "<b><blockquote>❌𝗗𝗼𝗻'𝘁 𝘀𝗲𝗻𝗱 𝗺𝗲 𝗱𝗶𝗿𝗲𝗰𝘁 𝗺𝗲𝘀𝘀𝗮𝗴𝗲𝘀 𝗶𝗻 𝗱𝗺, 𝗱𝗼 𝘆𝗼𝘂 𝗵𝗮𝘃𝗲 𝗮 𝗱𝗲𝗮𝘁𝗵 𝘄𝗶𝘀𝗵?</blockquote></b>",
+            "START": "<b>Welcome {first}\n\nI am a file store bot, I can store private files in specified channel and other users can access them from special link.</b>",
+            "FSUB": "Hello {mention}\n\n<b>You Need To Join My Channels To Get Files</b>",
+            "ABOUT": "<b>❍ My Name: <a href='https://t.me/XeonFileBot'>Xeon File Bot</a>\n<blockquote expandable>❍ Developer: <a href='https://t.me/MrXeonTg'>Mr Xeon</a>\n❍ My Best Friend: <a href='tg://settings'>This Person</a>\n❍ Library: <a href='https://docs.pyrogram.org'>Pyrogram v2</a>\n❍ Language: <a href='https://docs.python.org/3'>Python 3</a>\n❍ Database: <a href='https://www.mongodb.com/docs'>Mongo DB</a>\n❍ Bot Server: <a href='https://heroku.com'>Heroku</a>\n❍ Build Status: v5.4.1 [Stable Features]</b></blockquote>",
+            "REPLY": "<b><blockquote>❌Don't send any useless message in the bot, Do you have any doubt?</blockquote></b>",
             "START_PHOTO": "",
             "FSUB_PHOTO": ""
         },
@@ -67,6 +67,14 @@
             "enabled": true,
             "time_window_seconds": 30,
             "min_files_for_batch": 2
+        },
+        "stream_config": {
+            "enabled": true,
+            "multi_client": false,
+            "sleep_threshold": 60,
+            "ping_interval": 1200,
+            "url": "https://yourdomain.com",
+            "token_expiry_hours": 24
         }
     }
 ]
