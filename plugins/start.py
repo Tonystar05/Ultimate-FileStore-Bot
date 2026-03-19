@@ -248,13 +248,13 @@ async def start_command(client: Client, message: Message):
             else:
                 return
 
-        # ==================== NEW: PREMIUM STREAMING MENU ====================
+        # ==================== PREMIUM STREAMING MENU (EXACTLY LIKE VJ BOT) ====================
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
         token_verification_enabled = await client.mongodb.get_bot_config('token_verification_enabled', True)
         
         is_first_file = credit_data.get("total_spent", 0) == 0 and not is_premium_user
 
-        # If user is premium or has credits → show streaming menu
+        # If user is premium or has credits → show streaming menu with DOWNLOAD/WATCH buttons
         if is_premium_user or (credit_system_enabled and user_credits > 0):
             # Handle batch links separately
             if original_base64.startswith("batch_"):
@@ -312,37 +312,31 @@ async def start_command(client: Client, message: Message):
                 "hd": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=uplayer.video.player;end",
             }
 
-            # Auto-delete warning
+            # Auto-delete warning (like in the image)
             warning = ""
             if client.auto_del > 0:
-                warning = f"\n\n⚠️ **File will be deleted in {humanize.naturaldelta(client.auto_del)} after download.**"
+                warning = f"\n\n❗❗ IMPORTANT ❗❗\n\nThis Movie File/Video will be deleted in {humanize.naturaldelta(client.auto_del)} (Due to Copyright Issues).\n\nPlease forward this File/Video to your Saved Messages and Start Download there."
 
-            # Create buttons
+            # Create buttons exactly like in the image
             buttons = [
-                [InlineKeyboardButton("📥 Download", callback_data=f"download_{channel_id}_{msg_id}_{token}")],
+                [InlineKeyboardButton("📥 DOWNLOAD", callback_data=f"download_{channel_id}_{msg_id}_{token}")],
                 [
-                    InlineKeyboardButton("🎬 VLC", url=intents["vlc"]),
-                    InlineKeyboardButton("🎬 MX", url=intents["mx"]),
-                ],
-                [
-                    InlineKeyboardButton("🌐 Web App", url=stream_url),
-                    InlineKeyboardButton("ℹ️ More", callback_data=f"more_{token}"),
+                    InlineKeyboardButton("🎬 WATCH", url=intents["vlc"]),
+                    InlineKeyboardButton("🌐 WEB APP", url=stream_url),
                 ],
             ]
 
-            # Send streaming menu
+            # Send streaming menu with file info
             await message.reply(
-                f"**📂 {file_name}**\n"
-                f"**📦 Size:** {humanize.naturalsize(file_size)}\n"
-                f"**🔗 Type:** {mime_type.split('/')[0].capitalize()}\n"
-                f"{warning}\n\n"
-                f"👆 Choose an option:",
+                f"**📂 FILENAME :** `{file_name}`\n"
+                f"**🔒 SIZE :** {humanize.naturalsize(file_size)}\n"
+                f"{warning}",
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
             return
         # ==================== END PREMIUM STREAMING MENU ====================
 
-        # ==================== FIXED NON-PREMIUM SHORTENER SECTION ====================
+        # ==================== NON-PREMIUM SHORTENER SECTION (NO BUTTONS - SAFE) ====================
         if not is_premium_user and token_verification_enabled:
             temp_msg = await message.reply(f"🔄 **{sc('generating your link')}...**")
             
@@ -390,55 +384,23 @@ async def start_command(client: Client, message: Message):
                 f"<b>💎 {sc('want direct access')}?</b> {sc('buy premium')}!"
             )
             
-            # Safe button sending with multiple fallbacks
+            # SIMPLE VERSION - Send photo WITHOUT any buttons (NO CRASH)
             try:
-                # Create main button with validated URL
-                main_url = shortened_url if shortened_url and shortened_url.startswith(('http://', 'https://')) else file_link
-                
-                # Start with just the main button
-                keyboard = [[InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=main_url)]]
-                
-                # Try to add second row if URLs are valid
-                second_row = []
-                tutorial_url = "https://t.me/ProCineflix/45"
-                premium_url = "https://t.me/ProCineflix/43"
-                
-                if tutorial_url.startswith(('http://', 'https://')):
-                    second_row.append(InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url=tutorial_url))
-                if premium_url.startswith(('http://', 'https://')):
-                    second_row.append(InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url=premium_url))
-                
-                if second_row:
-                    keyboard.append(second_row)
-                
-                buttons = InlineKeyboardMarkup(keyboard)
-
                 await client.send_photo(
                     chat_id=message.chat.id,
                     photo="https://files.catbox.moe/bktufd.jpg",
                     caption=premium_text,
-                    reply_markup=buttons,
                     protect_content=True
                 )
             except Exception as e:
-                client.LOGGER(__name__, client.name).error(f"Button error: {e}")
-                # Final fallback - send without any buttons
-                try:
-                    await client.send_photo(
-                        chat_id=message.chat.id,
-                        photo="https://files.catbox.moe/bktufd.jpg",
-                        caption=premium_text,
-                        protect_content=True
-                    )
-                except Exception as e2:
-                    client.LOGGER(__name__, client.name).error(f"Final fallback error: {e2}")
-                    # Ultimate fallback - just send text
-                    await message.reply(premium_text)
+                client.LOGGER(__name__, client.name).error(f"Photo send error: {e}")
+                # Ultimate fallback
+                await message.reply(premium_text)
 
             if original_base64.startswith("batch_"):
                 message.stop_propagation()
             return
-        # ==================== END FIXED NON-PREMIUM SECTION ====================
+        # ==================== END NON-PREMIUM SECTION ====================
         
         # Handle batch links after verification
         if original_base64.startswith("batch_"):
