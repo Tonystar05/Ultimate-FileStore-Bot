@@ -6,7 +6,7 @@ from helper.credit_db import credit_db
 from helper.enhanced_credit_db import EnhancedCreditDB
 from helper.font_converter import to_small_caps as sc
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
 import humanize
 import secrets
 import json
@@ -248,95 +248,28 @@ async def start_command(client: Client, message: Message):
             else:
                 return
 
-        # ==================== PREMIUM STREAMING MENU (EXACTLY LIKE VJ BOT) ====================
+        # ------------------ USER TRYING TO GET FILE ------------------
+        
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
         token_verification_enabled = await client.mongodb.get_bot_config('token_verification_enabled', True)
         
         is_first_file = credit_data.get("total_spent", 0) == 0 and not is_premium_user
 
-        # If user is premium or has credits → show streaming menu with DOWNLOAD/WATCH buttons
-        if is_premium_user or (credit_system_enabled and user_credits > 0):
-            # Handle batch links separately
-            if original_base64.startswith("batch_"):
-                from plugins.batch_handler import process_batch
-                await process_batch(client, message, batch_id)
-                return
+        if credit_system_enabled and user_credits > 0 and not is_premium_user:
+            await enhanced_db.use_credit(user_id)
+            user_credits -= 1
+            is_premium_user = True
 
-            # Get channel and message ID
-            if custom_chat_id and ids:
-                channel_id = custom_chat_id
-                msg_id = ids[0]  # For single file
-            else:
-                await message.reply("❌ Invalid file reference.")
-                return
-
-            # Fetch file info for display
-            try:
-                f_msg = await client.get_messages(channel_id, msg_id)
-                if f_msg.document:
-                    file_name = f_msg.document.file_name
-                    file_size = f_msg.document.file_size
-                    mime_type = f_msg.document.mime_type or "video/mp4"
-                elif f_msg.video:
-                    file_name = f_msg.video.file_name or "video.mp4"
-                    file_size = f_msg.video.file_size
-                    mime_type = f_msg.video.mime_type or "video/mp4"
-                else:
-                    file_name = "file"
-                    file_size = 0
-                    mime_type = "application/octet-stream"
-            except Exception as e:
-                await message.reply(f"❌ Error fetching file info: {e}")
-                return
-
-            # Generate streaming token
-            token = await client.mongodb.create_stream_token(
-                user_id=message.from_user.id,
-                channel_id=channel_id,
-                msg_id=msg_id,
-                filename=file_name,
-                expiry_hours=client.stream_token_expiry
-            )
-
-            # Build streaming URL
-            stream_url = f"{client.stream_domain}/stream/{token}/{file_name}"
-
-            # Build external player intents
-            intents = {
-                "vlc": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;end",
-                "mx": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.ad;end",
-                "mx_pro": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.pro;end",
-                "playit": f"playit://playerv2/video?url={stream_url}",
-                "km": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.kmplayer;end",
-                "splayer": f"intent:{stream_url}#Intent;action=com.young.simple.player.playback_online;package=com.young.simple.player;end",
-                "hd": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=uplayer.video.player;end",
-            }
-
-            # Auto-delete warning (like in the image)
-            warning = ""
-            if client.auto_del > 0:
-                warning = f"\n\n❗❗ IMPORTANT ❗❗\n\nThis Movie File/Video will be deleted in {humanize.naturaldelta(client.auto_del)} (Due to Copyright Issues).\n\nPlease forward this File/Video to your Saved Messages and Start Download there."
-
-            # Create buttons exactly like in the image
-            buttons = [
-                [InlineKeyboardButton("📥 DOWNLOAD", callback_data=f"download_{channel_id}_{msg_id}_{token}")],
-                [
-                    InlineKeyboardButton("🎬 WATCH", url=intents["vlc"]),
-                    InlineKeyboardButton("🌐 WEB APP", url=stream_url),
-                ],
-            ]
-
-            # Send streaming menu with file info
             await message.reply(
-                f"**📂 FILENAME :** `{file_name}`\n"
-                f"**🔒 SIZE :** {humanize.naturalsize(file_size)}\n"
-                f"{warning}",
-                reply_markup=InlineKeyboardMarkup(buttons)
+                f"⚡ {sc('1 credit used')}!\n"
+                f"{sc('remaining credits')}: {user_credits}"
             )
-            return
-        # ==================== END PREMIUM STREAMING MENU ====================
+            
+            if is_first_file and credit_data.get("referred_by"):
+                # reward referrer
+                pass
 
-        # ==================== NON-PREMIUM SHORTENER SECTION (NO BUTTONS - SAFE) ====================
+        # If not premium and token verification enabled, show shortener
         if not is_premium_user and token_verification_enabled:
             temp_msg = await message.reply(f"🔄 **{sc('generating your link')}...**")
             
@@ -350,6 +283,7 @@ async def start_command(client: Client, message: Message):
                 elif ids:
                     try:
                         t_msg_id = ids[0]
+                        # Correct channel selection for caption fetching
                         main_db = getattr(client, 'db_channel_id', client.db)
                         extra_dbs = await client.mongodb.get_db_channels()
                         caption_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
@@ -362,10 +296,8 @@ async def start_command(client: Client, message: Message):
                                     if f_msg.document:
                                         content_name = f"🎬 <b>{f_msg.document.file_name}</b>\n\n"
                                     break
-                            except: 
-                                continue
-                    except: 
-                        pass
+                            except: continue
+                    except: pass
             except Exception as e:
                 client.LOGGER(__name__, client.name).warning(f"Error fetching content name: {e}")
             
@@ -384,23 +316,24 @@ async def start_command(client: Client, message: Message):
                 f"<b>💎 {sc('want direct access')}?</b> {sc('buy premium')}!"
             )
             
-            # SIMPLE VERSION - Send photo WITHOUT any buttons (NO CRASH)
-            try:
-                await client.send_photo(
-                    chat_id=message.chat.id,
-                    photo="https://files.catbox.moe/bktufd.jpg",
-                    caption=premium_text,
-                    protect_content=True
-                )
-            except Exception as e:
-                client.LOGGER(__name__, client.name).error(f"Photo send error: {e}")
-                # Ultimate fallback
-                await message.reply(premium_text)
-
+            buttons = InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=shortened_url)],
+                [
+                    InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url="https://t.me/ProCineflix/45"),
+                    InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url="https://t.me/ProCineflix/43")
+                ]
+            ])
+            
+            await client.send_photo(
+                chat_id=message.chat.id,
+                photo="https://files.catbox.moe/bktufd.jpg",
+                caption=premium_text,
+                reply_markup=buttons,
+                protect_content=True
+            )
             if original_base64.startswith("batch_"):
                 message.stop_propagation()
             return
-        # ==================== END NON-PREMIUM SECTION ====================
         
         # Handle batch links after verification
         if original_base64.startswith("batch_"):
