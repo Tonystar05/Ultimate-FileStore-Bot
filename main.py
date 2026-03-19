@@ -1,4 +1,3 @@
-
 import asyncio
 import json
 from bot import Bot, web_app
@@ -53,7 +52,8 @@ async def main():
                 api_id,
                 api_hash,
                 protect,
-                disable_btn
+                disable_btn,
+                stream_config=config.get("stream_config", {})  # 🔥 NEW: Pass streaming config
             )
         )
 
