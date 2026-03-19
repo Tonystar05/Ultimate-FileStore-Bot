@@ -222,3 +222,97 @@ async def unban(client: Client, message: Message):
         return await message.reply(f"__{c} users have been unbanned!__")
     except Exception as e:
         return await message.reply(f"**Error:** `{e}`")
+
+@Client.on_callback_query(filters.regex(r"^download_"))
+async def download_callback(client: Client, query: CallbackQuery):
+    _, channel_id, msg_id, token = query.data.split("_")
+    channel_id = int(channel_id)
+    msg_id = int(msg_id)
+    user_id = query.from_user.id
+
+    token_data = await client.mongodb.validate_stream_token(token)
+    if not token_data or token_data['user_id'] != user_id:
+        await query.answer("❌ Invalid or expired link. Please generate a new one.", show_alert=True)
+        return
+
+    credit_system_enabled = await client.mongodb.is_credit_system_enabled()
+    is_premium = await client.mongodb.is_premium(user_id)
+
+    if credit_system_enabled and not is_premium:
+        from helper.enhanced_credit_db import EnhancedCreditDB
+        enhanced_db = EnhancedCreditDB(client.db_uri, client.db_name)
+        credit_data = await enhanced_db.get_credits(user_id)
+        if credit_data.get("balance", 0) <= 0:
+            await query.answer("❌ You don't have enough credits.", show_alert=True)
+            return
+        await enhanced_db.use_credit(user_id)
+        remaining = credit_data["balance"] - 1
+        await query.message.reply(f"⚡ 1 credit used. Remaining: {remaining}")
+
+    await query.answer("Sending file...")
+    
+    from helper.helper_func import get_messages, delete_files
+    messages = await get_messages(client, [msg_id], channel_id)
+    if not messages:
+        await query.message.reply("❌ File not found.")
+        return
+
+    sent_msgs = []
+    for msg in messages:
+        caption = (
+            client.messages.get('CAPTION', '').format(
+                previouscaption=f"<blockquote>{msg.caption.html}</blockquote>" if msg.caption else f"<blockquote>{msg.document.file_name}</blockquote>"
+            )
+            if client.messages.get('CAPTION', '') and msg.document
+            else (msg.caption.html if msg.caption else "")
+        )
+        try:
+            copied = await msg.copy(
+                chat_id=user_id,
+                caption=caption,
+                protect_content=client.protect
+            )
+            sent_msgs.append(copied)
+        except Exception as e:
+            client.LOGGER(__name__, client.name).warning(f"Failed to copy: {e}")
+
+    if sent_msgs and client.auto_del > 0:
+        warning = await client.send_message(
+            user_id,
+            f"<b>⚠️ File will be deleted in {humanize.naturaldelta(client.auto_del)}.</b>"
+        )
+        asyncio.create_task(delete_files(sent_msgs, client, warning, ""))
+
+    await query.message.edit_reply_markup(None)
+
+@Client.on_callback_query(filters.regex(r"^more_"))
+async def more_players_callback(client: Client, query: CallbackQuery):
+    token = query.data.split("_")[1]
+    token_data = await client.mongodb.validate_stream_token(token)
+    if not token_data:
+        await query.answer("❌ Token expired", show_alert=True)
+        return
+
+    stream_url = f"{client.stream_domain}/stream/{token}/{token_data.get('filename', 'video.mp4')}"
+    
+    intents = {
+        "vlc": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;end",
+        "mx": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.ad;end",
+        "mx_pro": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.pro;end",
+        "playit": f"playit://playerv2/video?url={stream_url}",
+        "km": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.kmplayer;end",
+        "splayer": f"intent:{stream_url}#Intent;action=com.young.simple.player.playback_online;package=com.young.simple.player;end",
+        "hd": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=uplayer.video.player;end",
+    }
+
+    text = "**🎬 External Players**\n\n"
+    text += f"• [VLC]({intents['vlc']})\n"
+    text += f"• [MX Player]({intents['mx']})\n"
+    text += f"• [MX Player Pro]({intents['mx_pro']})\n"
+    text += f"• [PLAYit]({intents['playit']})\n"
+    text += f"• [KMPlayer]({intents['km']})\n"
+    text += f"• [S Player]({intents['splayer']})\n"
+    text += f"• [HD Player]({intents['hd']})\n"
+    
+    await query.message.reply(text, disable_web_page_preview=True)
+    await query.answer()
