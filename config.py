@@ -93,7 +93,7 @@ ON_HEROKU = 'DYNO' in os.environ
 
 # Your domain for streaming links (REQUIRED for streaming to work)
 # Replace with your actual domain (e.g., https://your-bot.onrender.com)
-STREAM_URL = os.environ.get("STREAM_URL", "")
+STREAM_URL = os.environ.get("STREAM_URL", "https://dominant-marla-yedhuku20005-e5fcc630.koyeb.app/")
 
 # Streaming token expiry (in hours)
 STREAM_TOKEN_EXPIRY = 24  # Default: 24 hours
