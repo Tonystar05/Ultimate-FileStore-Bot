@@ -1,6 +1,7 @@
 #credit dena toh de ni dena toh mat de laadle ~ GPG
 import logging
 from logging.handlers import RotatingFileHandler
+import os  # 🔥 NEW: Import os for environment variables
 
 LOG_FILE_NAME = "bot.log"
 PORT = '8000'
@@ -74,6 +75,28 @@ URL_SHORTENERS = {
         'active': True
     }
 }
+
+# ===========================
+# 🔥 NEW: STREAMING CONFIGURATION
+# ===========================
+
+# Enable/disable streaming feature
+STREAM_MODE = True  # Set to False to disable streaming entirely
+
+# Multi-client settings (for load balancing)
+MULTI_CLIENT = False  # Set True if you want multiple bot tokens for streaming
+SLEEP_THRESHOLD = 60  # Sleep threshold for multi-client mode
+PING_INTERVAL = 1200  # 20 minutes - for keeping Heroku app alive
+
+# Detect if running on Heroku
+ON_HEROKU = 'DYNO' in os.environ
+
+# Your domain for streaming links (REQUIRED for streaming to work)
+# Replace with your actual domain (e.g., https://your-bot.onrender.com)
+STREAM_URL = os.environ.get("STREAM_URL", "https://yourdomain.com")
+
+# Streaming token expiry (in hours)
+STREAM_TOKEN_EXPIRY = 24  # Default: 24 hours
 
 def LOGGER(name: str, client_name: str) -> logging.Logger:
     logger = logging.getLogger(name)
