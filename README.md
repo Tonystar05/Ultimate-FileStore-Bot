@@ -309,31 +309,6 @@ project-root/
 │   ├── payment.py
 │   └── quality_detector.py
 │
-├── TechVJ/
-│   ├── __init__.py
-│   │
-│   ├── bot/
-│   │   ├── __init__.py
-│   │   └── clients.py
-│   │
-│   ├── server/
-│   │   ├── __init__.py
-│   │   ├── exceptions.py
-│   │   └── stream_routes.py
-│   │
-│   ├── template/
-│   │   ├── dl.html
-│   │   └── req.html
-│   │
-│   └── utils/
-│       ├── config_parser.py
-│       ├── custom_dl.py
-│       ├── file_properties.py
-│       ├── file_size.py
-│       ├── human_readable.py
-│       ├── keepalive.py
-│       ├── render_template.py
-│       └── time_format.py
 ```
 
 ---
