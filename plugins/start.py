@@ -6,23 +6,19 @@ from helper.credit_db import credit_db
 from helper.enhanced_credit_db import EnhancedCreditDB
 from helper.font_converter import to_small_caps as sc
 from pyrogram import Client, filters
-from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 import humanize
 import secrets
 import json
 import asyncio
-
-# Import the new button functions from others.py
 from plugins.others import home_buttons, home_buttons_admin
 
-# Load credit configuration
 try:
     with open("setup.json", "r") as f:
         setup_data = json.load(f)
         credit_config = setup_data[0].get("credit_config", {})
 except:
     credit_config = {}
-
 
 @Client.on_message(filters.command('start') & filters.private)
 @force_sub
@@ -39,15 +35,11 @@ async def start_command(client: Client, message: Message):
     if is_banned:
         return await message.reply(f"**{sc('You have been banned from using this bot!')}**")
     
-    # Premium check
     is_premium_user = await client.mongodb.is_premium(user_id)
-
-    # Enhanced credit system
     enhanced_db = EnhancedCreditDB(client.db_uri, client.db_name)
     credit_data = await enhanced_db.get_credits(user_id)
     user_credits = credit_data.get("balance", 0)
     
-    # Check for expired credits
     await enhanced_db.check_and_remove_expired(user_id)
 
     text = message.text
@@ -57,10 +49,8 @@ async def start_command(client: Client, message: Message):
         except IndexError:
             return
 
-        # ============== REFERRAL SYSTEM ==============
         if base64_string.startswith("ref_"):
             referral_code = base64_string.replace("ref_", "")
-            
             if not present:
                 referrer_id = await enhanced_db.apply_referral(user_id, referral_code)
                 if referrer_id:
@@ -74,7 +64,6 @@ async def start_command(client: Client, message: Message):
         access_token = None
         original_base64 = base64_string
         
-        # ---------------- TOKEN VERIFIED / SHORTENER SOLVED ----------------
         if "_" in base64_string:
             parts = base64_string.split("_", 1)
             if base64_string.startswith("batch_"):
@@ -96,7 +85,6 @@ async def start_command(client: Client, message: Message):
                         user_id, access_token, original_base64
                     )
     
-                    # ======================= ANTI-BYPASS LOGIC ======================
                     if verify_result == "BYPASS":
                         if user_id not in client.admins:
                             was_banned = await client.mongodb.check_and_auto_ban(user_id, max_attempts=5)
@@ -147,7 +135,6 @@ async def start_command(client: Client, message: Message):
                         )
                         return
     
-                    # ---------------- GIVE 3 CREDITS (IF ENABLED) ----------------
                     credit_system_enabled = await client.mongodb.is_credit_system_enabled()
                     
                     if credit_system_enabled:
@@ -178,17 +165,13 @@ async def start_command(client: Client, message: Message):
                          message.stop_propagation()
                          return
 
-        # -------------------------- HYBRID TOKEN / BASE64 DECODE --------------------------
         from helper.helper_func import is_token_format
         
         is_batch = original_base64.startswith("batch_")
-        
-        # Initialize variables
         ids = []
         custom_chat_id = None
         
         if not is_batch and is_token_format(original_base64):
-            # ----- HYBRID TOKEN -----
             if await client.mongodb.is_token_rate_limited(user_id):
                 return await message.reply(
                     f"<blockquote>⏳ <b>{sc('too many invalid attempts')}</b></blockquote>\n"
@@ -216,7 +199,6 @@ async def start_command(client: Client, message: Message):
             custom_chat_id = channel_id
             
         elif not is_batch:
-            # ----- OLD BASE64 PATH -----
             try:
                 string = await decode(original_base64)
                 argument = string.split("-")
@@ -224,14 +206,12 @@ async def start_command(client: Client, message: Message):
                 return
         
             if len(argument) == 3:
-                # New format: get-CHANNEL_ID-MSG_ID (channel_id without -100)
                 try:
                     channel_id_part = int(argument[1])
                     msg_id_part = int(argument[2])
                     custom_chat_id = int(f"-100{channel_id_part}")
                     ids = [msg_id_part]
                 except:
-                    # Old range format: get-ID1-ID2
                     try:
                         start = int(int(argument[1]) / abs(client.db))
                         end = int(int(argument[2]) / abs(client.db))
@@ -239,7 +219,6 @@ async def start_command(client: Client, message: Message):
                     except:
                         return
             elif len(argument) == 2:
-                # Old single file format: get-GENERATED_ID
                 try:
                     msg_id = int(int(argument[1]) / abs(client.db))
                     ids = [msg_id]
@@ -248,28 +227,91 @@ async def start_command(client: Client, message: Message):
             else:
                 return
 
-        # ------------------ USER TRYING TO GET FILE ------------------
-        
+        # ============= NEW PREMIUM STREAMING MENU =============
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
         token_verification_enabled = await client.mongodb.get_bot_config('token_verification_enabled', True)
         
         is_first_file = credit_data.get("total_spent", 0) == 0 and not is_premium_user
 
-        if credit_system_enabled and user_credits > 0 and not is_premium_user:
-            await enhanced_db.use_credit(user_id)
-            user_credits -= 1
-            is_premium_user = True
+        # If user is premium or has credits → show streaming menu
+        if is_premium_user or (credit_system_enabled and user_credits > 0):
+            if original_base64.startswith("batch_"):
+                from plugins.batch_handler import process_batch
+                await process_batch(client, message, batch_id)
+                return
+
+            if custom_chat_id and ids:
+                channel_id = custom_chat_id
+                msg_id = ids[0]
+            else:
+                await message.reply("❌ Invalid file reference.")
+                return
+
+            try:
+                f_msg = await client.get_messages(channel_id, msg_id)
+                if f_msg.document:
+                    file_name = f_msg.document.file_name
+                    file_size = f_msg.document.file_size
+                    mime_type = f_msg.document.mime_type or "video/mp4"
+                elif f_msg.video:
+                    file_name = f_msg.video.file_name or "video.mp4"
+                    file_size = f_msg.video.file_size
+                    mime_type = f_msg.video.mime_type or "video/mp4"
+                else:
+                    file_name = "file"
+                    file_size = 0
+                    mime_type = "application/octet-stream"
+            except Exception as e:
+                await message.reply(f"❌ Error fetching file info: {e}")
+                return
+
+            token = await client.mongodb.create_stream_token(
+                user_id=message.from_user.id,
+                channel_id=channel_id,
+                msg_id=msg_id,
+                filename=file_name,
+                expiry_hours=client.stream_token_expiry
+            )
+
+            stream_url = f"{client.stream_domain}/stream/{token}/{file_name}"
+
+            intents = {
+                "vlc": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;end",
+                "mx": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.ad;end",
+                "mx_pro": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.pro;end",
+                "playit": f"playit://playerv2/video?url={stream_url}",
+                "km": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.kmplayer;end",
+                "splayer": f"intent:{stream_url}#Intent;action=com.young.simple.player.playback_online;package=com.young.simple.player;end",
+                "hd": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=uplayer.video.player;end",
+            }
+
+            warning = ""
+            if client.auto_del > 0:
+                warning = f"\n\n⚠️ **File will be deleted in {humanize.naturaldelta(client.auto_del)} after download.**"
+
+            buttons = [
+                [InlineKeyboardButton("📥 Download", callback_data=f"download_{channel_id}_{msg_id}_{token}")],
+                [
+                    InlineKeyboardButton("🎬 VLC", url=intents["vlc"]),
+                    InlineKeyboardButton("🎬 MX", url=intents["mx"]),
+                ],
+                [
+                    InlineKeyboardButton("🌐 Web App", url=stream_url),
+                    InlineKeyboardButton("ℹ️ More", callback_data=f"more_{token}"),
+                ],
+            ]
 
             await message.reply(
-                f"⚡ {sc('1 credit used')}!\n"
-                f"{sc('remaining credits')}: {user_credits}"
+                f"**📂 {file_name}**\n"
+                f"**📦 Size:** {humanize.naturalsize(file_size)}\n"
+                f"**🔗 Type:** {mime_type.split('/')[0].capitalize()}\n"
+                f"{warning}\n\n"
+                f"👆 Choose an option:",
+                reply_markup=InlineKeyboardMarkup(buttons)
             )
-            
-            if is_first_file and credit_data.get("referred_by"):
-                # reward referrer
-                pass
+            return
 
-        # If not premium and token verification enabled, show shortener
+        # ============= EXISTING SHORTENER LOGIC =============
         if not is_premium_user and token_verification_enabled:
             temp_msg = await message.reply(f"🔄 **{sc('generating your link')}...**")
             
@@ -283,7 +325,6 @@ async def start_command(client: Client, message: Message):
                 elif ids:
                     try:
                         t_msg_id = ids[0]
-                        # Correct channel selection for caption fetching
                         main_db = getattr(client, 'db_channel_id', client.db)
                         extra_dbs = await client.mongodb.get_db_channels()
                         caption_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
@@ -335,7 +376,6 @@ async def start_command(client: Client, message: Message):
                 message.stop_propagation()
             return
         
-        # Handle batch links after verification
         if original_base64.startswith("batch_"):
              batch_id = original_base64.replace("batch_", "").strip()
              from plugins.batch_handler import process_batch
@@ -343,14 +383,10 @@ async def start_command(client: Client, message: Message):
              message.stop_propagation()
              return
 
-        # ------------------ FETCH AND SEND FILES (UPDATED FOR MULTI-DB) ------------------
         temp_msg = await message.reply(f"{sc('wait a sec')}..")
         
-        # Get all possible DB channels to search
         main_db = getattr(client, 'db_channel_id', client.db)
         extra_dbs = await client.mongodb.get_db_channels()
-        
-        # If hybrid token provided a specific ID, try that first, then fall back to all DBs
         search_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
         
         valid_messages = []
@@ -359,10 +395,9 @@ async def start_command(client: Client, message: Message):
             if not channel: continue
             try:
                 messages = await get_messages(client, ids, channel)
-                # Filter out None/Empty messages
                 valid_messages = [msg for msg in messages if msg and not getattr(msg, 'empty', True)]
                 if valid_messages:
-                    break # Found the file!
+                    break
             except Exception:
                 continue
 
@@ -405,7 +440,6 @@ async def start_command(client: Client, message: Message):
             )
         return
 
-    # ---------------- NORMAL /start UI ----------------
     if user_id in client.admins:
         markup = home_buttons_admin()
     else:
