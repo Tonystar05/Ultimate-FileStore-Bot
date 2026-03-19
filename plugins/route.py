@@ -5,6 +5,10 @@ from aiohttp import web
 import markdown
 import os
 
+# ========== NEW: Import streaming routes ==========
+from stream.routes import routes as stream_routes
+# ==================================================
+
 routes = web.RouteTableDef()
 
 @routes.get("/", allow_head=True)
@@ -41,7 +45,7 @@ async def root_route_handler(request):
                 border-radius: 8px;
                 font-size: 14px;
                 line-height: 1.5;
-                white-space: pre; /* Important: prevents weird wrapping */
+                white-space: pre;
             }}
             code {{
                 font-family: Consolas, Monaco, 'Andale Mono', 'Ubuntu Mono', monospace;
@@ -69,9 +73,20 @@ async def root_route_handler(request):
     """
     return web.Response(text=html_page, content_type="text/html")
 
+# ========== MODIFIED: Create web application with both route sets ==========
+async def web_server():
+    """Create and return the web application with all routes"""
+    web_app = web.Application()
+    
+    # Add your existing routes
+    web_app.add_routes(routes)
+    
+    # Add streaming routes
+    web_app.add_routes(stream_routes)
+    
+    return web_app
+# ===========================================================================
 
-app = web.Application()
-app.add_routes(routes)
-
+# Keep the standalone server for testing (optional)
 if __name__ == "__main__":
-    web.run_app(app, port=8080)
+    web.run_app(web_server(), port=8080)
