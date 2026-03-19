@@ -73,7 +73,7 @@
             "multi_client": false,
             "sleep_threshold": 60,
             "ping_interval": 1200,
-            "url": "",
+            "url": "https://dominant-marla-yedhuku20005-e5fcc630.koyeb.app/",
             "token_expiry_hours": 24
         }
     }
