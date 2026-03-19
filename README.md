@@ -261,13 +261,79 @@ This document lists all available commands for the bot, based on the provided so
 ## 🗂️ Project Structure
 
 ```
-file-sharing-bot/
+project-root/
+│
+├── main.py
 ├── bot.py
 ├── config.py
 ├── requirements.txt
+├── start.sh
+├── setup.json
+├── Procfile
+├── Dockerfile
+├── README.md
+├── LICENSE
+├── .env.example
+├── .gitignore
+│
 ├── plugins/
+│   ├── __init__.py
+│   ├── admins.py
+│   ├── auto_batch.py
+│   ├── auto_forward.py
+│   ├── autobatch_cmd.py
+│   ├── batch_handler.py
+│   ├── broadcast.py
+│   ├── channel_post.py
+│   ├── commands.py
+│   ├── credit.py
+│   ├── credit_settings.py
+│   ├── force_sub.py
+│   ├── join_request.py
+│   ├── link_generator.py
+│   ├── others.py
+│   ├── premium.py
+│   ├── route.py
+│   ├── security_panel.py
+│   ├── settings.py
+│   ├── start.py
+│   └── texts.py
+│
 ├── helper/
-└── README.md
+│   ├── __init__.py
+│   ├── credit_db.py
+│   ├── database.py
+│   ├── enhanced_credit_db.py
+│   ├── font_converter.py
+│   ├── helper_func.py
+│   ├── payment.py
+│   └── quality_detector.py
+│
+├── TechVJ/
+│   ├── __init__.py
+│   │
+│   ├── bot/
+│   │   ├── __init__.py
+│   │   └── clients.py
+│   │
+│   ├── server/
+│   │   ├── __init__.py
+│   │   ├── exceptions.py
+│   │   └── stream_routes.py
+│   │
+│   ├── template/
+│   │   ├── dl.html
+│   │   └── req.html
+│   │
+│   └── utils/
+│       ├── config_parser.py
+│       ├── custom_dl.py
+│       ├── file_properties.py
+│       ├── file_size.py
+│       ├── human_readable.py
+│       ├── keepalive.py
+│       ├── render_template.py
+│       └── time_format.py
 ```
 
 ---
