@@ -11,14 +11,18 @@ import humanize
 import secrets
 import json
 import asyncio
+
+# Import the new button functions from others.py
 from plugins.others import home_buttons, home_buttons_admin
 
+# Load credit configuration
 try:
     with open("setup.json", "r") as f:
         setup_data = json.load(f)
         credit_config = setup_data[0].get("credit_config", {})
 except:
     credit_config = {}
+
 
 @Client.on_message(filters.command('start') & filters.private)
 @force_sub
@@ -35,11 +39,15 @@ async def start_command(client: Client, message: Message):
     if is_banned:
         return await message.reply(f"**{sc('You have been banned from using this bot!')}**")
     
+    # Premium check
     is_premium_user = await client.mongodb.is_premium(user_id)
+
+    # Enhanced credit system
     enhanced_db = EnhancedCreditDB(client.db_uri, client.db_name)
     credit_data = await enhanced_db.get_credits(user_id)
     user_credits = credit_data.get("balance", 0)
     
+    # Check for expired credits
     await enhanced_db.check_and_remove_expired(user_id)
 
     text = message.text
@@ -49,8 +57,10 @@ async def start_command(client: Client, message: Message):
         except IndexError:
             return
 
+        # ============== REFERRAL SYSTEM ==============
         if base64_string.startswith("ref_"):
             referral_code = base64_string.replace("ref_", "")
+            
             if not present:
                 referrer_id = await enhanced_db.apply_referral(user_id, referral_code)
                 if referrer_id:
@@ -64,6 +74,7 @@ async def start_command(client: Client, message: Message):
         access_token = None
         original_base64 = base64_string
         
+        # ---------------- TOKEN VERIFIED / SHORTENER SOLVED ----------------
         if "_" in base64_string:
             parts = base64_string.split("_", 1)
             if base64_string.startswith("batch_"):
@@ -85,6 +96,7 @@ async def start_command(client: Client, message: Message):
                         user_id, access_token, original_base64
                     )
     
+                    # ======================= ANTI-BYPASS LOGIC ======================
                     if verify_result == "BYPASS":
                         if user_id not in client.admins:
                             was_banned = await client.mongodb.check_and_auto_ban(user_id, max_attempts=5)
@@ -135,6 +147,7 @@ async def start_command(client: Client, message: Message):
                         )
                         return
     
+                    # ---------------- GIVE 3 CREDITS (IF ENABLED) ----------------
                     credit_system_enabled = await client.mongodb.is_credit_system_enabled()
                     
                     if credit_system_enabled:
@@ -165,13 +178,17 @@ async def start_command(client: Client, message: Message):
                          message.stop_propagation()
                          return
 
+        # -------------------------- HYBRID TOKEN / BASE64 DECODE --------------------------
         from helper.helper_func import is_token_format
         
         is_batch = original_base64.startswith("batch_")
+        
+        # Initialize variables
         ids = []
         custom_chat_id = None
         
         if not is_batch and is_token_format(original_base64):
+            # ----- HYBRID TOKEN -----
             if await client.mongodb.is_token_rate_limited(user_id):
                 return await message.reply(
                     f"<blockquote>⏳ <b>{sc('too many invalid attempts')}</b></blockquote>\n"
@@ -199,6 +216,7 @@ async def start_command(client: Client, message: Message):
             custom_chat_id = channel_id
             
         elif not is_batch:
+            # ----- OLD BASE64 PATH -----
             try:
                 string = await decode(original_base64)
                 argument = string.split("-")
@@ -206,12 +224,14 @@ async def start_command(client: Client, message: Message):
                 return
         
             if len(argument) == 3:
+                # New format: get-CHANNEL_ID-MSG_ID (channel_id without -100)
                 try:
                     channel_id_part = int(argument[1])
                     msg_id_part = int(argument[2])
                     custom_chat_id = int(f"-100{channel_id_part}")
                     ids = [msg_id_part]
                 except:
+                    # Old range format: get-ID1-ID2
                     try:
                         start = int(int(argument[1]) / abs(client.db))
                         end = int(int(argument[2]) / abs(client.db))
@@ -219,6 +239,7 @@ async def start_command(client: Client, message: Message):
                     except:
                         return
             elif len(argument) == 2:
+                # Old single file format: get-GENERATED_ID
                 try:
                     msg_id = int(int(argument[1]) / abs(client.db))
                     ids = [msg_id]
@@ -227,7 +248,8 @@ async def start_command(client: Client, message: Message):
             else:
                 return
 
-        # ============= NEW PREMIUM STREAMING MENU =============
+        # ==================== NEW: PREMIUM STREAMING MENU ====================
+        # This section handles premium users and shows the streaming menu
         credit_system_enabled = await client.mongodb.is_credit_system_enabled()
         token_verification_enabled = await client.mongodb.get_bot_config('token_verification_enabled', True)
         
@@ -235,18 +257,21 @@ async def start_command(client: Client, message: Message):
 
         # If user is premium or has credits → show streaming menu
         if is_premium_user or (credit_system_enabled and user_credits > 0):
+            # Handle batch links separately
             if original_base64.startswith("batch_"):
                 from plugins.batch_handler import process_batch
                 await process_batch(client, message, batch_id)
                 return
 
+            # Get channel and message ID
             if custom_chat_id and ids:
                 channel_id = custom_chat_id
-                msg_id = ids[0]
+                msg_id = ids[0]  # For single file
             else:
                 await message.reply("❌ Invalid file reference.")
                 return
 
+            # Fetch file info for display
             try:
                 f_msg = await client.get_messages(channel_id, msg_id)
                 if f_msg.document:
@@ -265,6 +290,7 @@ async def start_command(client: Client, message: Message):
                 await message.reply(f"❌ Error fetching file info: {e}")
                 return
 
+            # Generate streaming token
             token = await client.mongodb.create_stream_token(
                 user_id=message.from_user.id,
                 channel_id=channel_id,
@@ -273,8 +299,10 @@ async def start_command(client: Client, message: Message):
                 expiry_hours=client.stream_token_expiry
             )
 
+            # Build streaming URL
             stream_url = f"{client.stream_domain}/stream/{token}/{file_name}"
 
+            # Build external player intents
             intents = {
                 "vlc": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=org.videolan.vlc;end",
                 "mx": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=com.mxtech.videoplayer.ad;end",
@@ -285,10 +313,12 @@ async def start_command(client: Client, message: Message):
                 "hd": f"intent:{stream_url}#Intent;action=android.intent.action.VIEW;type=video/*;package=uplayer.video.player;end",
             }
 
+            # Auto-delete warning
             warning = ""
             if client.auto_del > 0:
                 warning = f"\n\n⚠️ **File will be deleted in {humanize.naturaldelta(client.auto_del)} after download.**"
 
+            # Create buttons
             buttons = [
                 [InlineKeyboardButton("📥 Download", callback_data=f"download_{channel_id}_{msg_id}_{token}")],
                 [
@@ -301,6 +331,7 @@ async def start_command(client: Client, message: Message):
                 ],
             ]
 
+            # Send streaming menu
             await message.reply(
                 f"**📂 {file_name}**\n"
                 f"**📦 Size:** {humanize.naturalsize(file_size)}\n"
@@ -310,8 +341,9 @@ async def start_command(client: Client, message: Message):
                 reply_markup=InlineKeyboardMarkup(buttons)
             )
             return
+        # ==================== END PREMIUM STREAMING MENU ====================
 
-        # ============= EXISTING SHORTENER LOGIC =============
+        # If not premium and token verification enabled, show shortener
         if not is_premium_user and token_verification_enabled:
             temp_msg = await message.reply(f"🔄 **{sc('generating your link')}...**")
             
@@ -325,6 +357,7 @@ async def start_command(client: Client, message: Message):
                 elif ids:
                     try:
                         t_msg_id = ids[0]
+                        # Correct channel selection for caption fetching
                         main_db = getattr(client, 'db_channel_id', client.db)
                         extra_dbs = await client.mongodb.get_db_channels()
                         caption_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
@@ -357,13 +390,18 @@ async def start_command(client: Client, message: Message):
                 f"<b>💎 {sc('want direct access')}?</b> {sc('buy premium')}!"
             )
             
-            buttons = InlineKeyboardMarkup([
-                [InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=shortened_url)],
-                [
-                    InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url="https://t.me/ProCineflix/45"),
-                    InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url="https://t.me/ProCineflix/43")
-                ]
-            ])
+            # FIXED: Added error handling for buttons
+            try:
+                buttons = InlineKeyboardMarkup([
+                    [InlineKeyboardButton(f"⌜{sc('ᴏᴘᴇɴ ʟɪɴᴋ')}⌟", url=shortened_url)],
+                    [
+                        InlineKeyboardButton(f"「{sc('ᴛᴜᴛᴏʀɪᴀʟ')}」", url="https://t.me/ProCineflix/45"),
+                        InlineKeyboardButton(f"「{sc('ʙᴜʏ ᴘʀᴇᴍɪᴜᴍ')}」", url="https://t.me/ProCineflix/43")
+                    ]
+                ])
+            except Exception as e:
+                client.LOGGER(__name__, client.name).error(f"Button creation error: {e}")
+                buttons = None
             
             await client.send_photo(
                 chat_id=message.chat.id,
@@ -376,6 +414,7 @@ async def start_command(client: Client, message: Message):
                 message.stop_propagation()
             return
         
+        # Handle batch links after verification
         if original_base64.startswith("batch_"):
              batch_id = original_base64.replace("batch_", "").strip()
              from plugins.batch_handler import process_batch
@@ -383,10 +422,14 @@ async def start_command(client: Client, message: Message):
              message.stop_propagation()
              return
 
+        # ------------------ FETCH AND SEND FILES (UPDATED FOR MULTI-DB) ------------------
         temp_msg = await message.reply(f"{sc('wait a sec')}..")
         
+        # Get all possible DB channels to search
         main_db = getattr(client, 'db_channel_id', client.db)
         extra_dbs = await client.mongodb.get_db_channels()
+        
+        # If hybrid token provided a specific ID, try that first, then fall back to all DBs
         search_channels = [custom_chat_id] if custom_chat_id else [main_db] + extra_dbs
         
         valid_messages = []
@@ -395,9 +438,10 @@ async def start_command(client: Client, message: Message):
             if not channel: continue
             try:
                 messages = await get_messages(client, ids, channel)
+                # Filter out None/Empty messages
                 valid_messages = [msg for msg in messages if msg and not getattr(msg, 'empty', True)]
                 if valid_messages:
-                    break
+                    break # Found the file!
             except Exception:
                 continue
 
@@ -440,6 +484,7 @@ async def start_command(client: Client, message: Message):
             )
         return
 
+    # ---------------- NORMAL /start UI ----------------
     if user_id in client.admins:
         markup = home_buttons_admin()
     else:
