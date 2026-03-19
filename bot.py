@@ -19,7 +19,6 @@ version = "v1.0.0"
 
 
 class Bot(Client):
-    # ========== MODIFIED __init__ METHOD (ADD stream_config parameter and streaming attributes) ==========
     def __init__(self, session, workers, db, fsub, token, admins, messages, auto_del, db_uri, db_name, api_id, api_hash, protect, disable_btn, stream_config=None):
         super().__init__(
             name=session,
@@ -49,21 +48,24 @@ class Bot(Client):
         self.db_name = db_name  # Store for EnhancedCreditDB
         self.req_channels = []
         
-        # ========== NEW: Streaming configuration ==========
+        # Streaming configuration
         self.stream_config = stream_config or {}
         self.stream_mode = self.stream_config.get('enabled', False)
         self.stream_domain = self.stream_config.get('url', '')
         self.stream_token_expiry = self.stream_config.get('token_expiry_hours', 24)
         self.multi_client = self.stream_config.get('multi_client', False)
         self.sleep_threshold = self.stream_config.get('sleep_threshold', 60)
-        # ==================================================
     
     async def start(self):
         await super().start()
         usr_bot_me = await self.get_me()
         self.uptime = datetime.now()
         
-        # ========== NEW: Start web server if streaming is enabled ==========
+        # ============================================
+        # 🔥 PASTE THE WEB SERVER CODE RIGHT HERE 🔥
+        # ============================================
+        # <<<--- START PASTING HERE
+        
         if self.stream_mode and self.stream_domain:
             try:
                 from plugins.route import web_server
@@ -71,13 +73,16 @@ class Bot(Client):
                 app['bot'] = self
                 runner = web.AppRunner(app)
                 await runner.setup()
+                from config import PORT
                 site = web.TCPSite(runner, "0.0.0.0", PORT)
                 await site.start()
                 self.LOGGER(__name__, self.name).info(f"🌐 Streaming server started on port {PORT}")
                 self.LOGGER(__name__, self.name).info(f"📡 Stream domain: {self.stream_domain}")
             except Exception as e:
                 self.LOGGER(__name__, self.name).warning(f"Failed to start streaming server: {e}")
-        # ================================================================
+        
+        # <<<--- STOP PASTING HERE
+        # ============================================
         
         if len(self.fsub) > 0:
             for channel in self.fsub:
@@ -290,9 +295,6 @@ class Bot(Client):
                 await asyncio.sleep(300)  # 5 minutes on error
 
 
-# ========== MODIFIED web_app function ==========
 async def web_app():
     """This is now handled inside bot.start() when streaming is enabled"""
-    # This function is kept for backward compatibility
-    # The actual web server is started in bot.start() if streaming is enabled
     pass
